@@ -1,0 +1,86 @@
+---
+title: "Are Students Really Dropping out of School?"
+author: "Emmely Rogers and Dana Vera"
+date: "Last updated on `r Sys.Date()`"
+output:
+  html_document:
+    code_folding: hide
+    highlight: tango
+    theme: cosmo
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    df_print: kable
+---
+
+<!--
+Comments in HTML are like this! 
+-->
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Set R Markdown chunk defaults:
+knitr::opts_chunk$set(
+  echo = FALSE, message = FALSE, warning = FALSE, 
+  fig.width = 16/2, fig.height = 9/2
+)
+```
+
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+
+# Load all necessary packages here
+library(tidyverse)
+library(readxl)
+library(stringr)
+library(plotly)
+```
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+
+# make a dataframe for our dataset (dropout rates from 1960 to 2016)
+# rename the variable we are using
+# remove rows that are empty/don't contain data
+# select columns with the variables we want to use
+# get just the first 4 characters of Year and make it a numeric variable
+# make Dropouts a numeric variable
+dropoutRatesManyYears <- read_excel("tabn219.70.xls", skip = 2) %>%
+  rename(Dropouts = "Total status dropout rate") %>%
+  slice(-c(1, 2, 7, 13, 19, 25, 31, 37,43, 49, 55, 61, 64:73)) %>%
+  select(Year, Dropouts) %>%
+  mutate(Year = as.numeric(substr(Year, 1, 4)),
+         Dropouts = as.numeric(Dropouts))
+
+
+# make a linegraph
+plot_ly(data = dropoutRatesManyYears, x = ~Year, y = ~Dropouts,
+        type = 'scatter', mode = 'lines+markers',
+        text = ~paste("Year: ", Year, "<br />Dropout Rate: ",
+                      paste(format(round(Dropouts, 2), nsmall = 2)), "%", sep = ""),
+        hoverinfo = 'text',
+        line = list(color = 'rgb(0, 204, 204)', 
+                    width = 4),
+        marker = list(color = 'rgb(0, 76, 153)')) %>%
+  layout(title = "Total High School Dropout Rates from 1960 to 2016",
+         yaxis = list(title = "Percentage of Dropouts", 
+                      range = c(0,30),
+                      zeroline = F, ticksuffix = "%"),
+         xaxis = list(title = "Year", 
+                      range = c(1957,2018), 
+                      zeroline = F)) %>%
+  config(displayModeBar = FALSE)
+
+```
+
+# A Decline in Dropout Rates
+
+Over the past decades, the United States has launched many initiatives to decrease high school dropout rates. One of these initiatives, the White House’s Building a Grad Nation Alliance^[“2018 Building a Grad Nation: Progress and Challenge in Raising High School Graduation Rates.” *America's Promise*, 5 June 2018, [gradnation.americaspromise.org/2018-building-grad-nation-report](https://gradnation.americaspromise.org/2018-building-grad-nation-report){target="_blank"}.], aims to increase graduation rates to 90% by 2020^[Mason, Kyla Calvert. “High School Graduation Rates Rise but U.S. Still Lags Other Developed Countries.” *PBS*, Public Broadcasting Service, 12 Feb. 2015, [www.pbs.org/newshour/education/high-school-graduation-rates-tick-u-s-still-lags-developed-countries](https://www.pbs.org/newshour/education/high-school-graduation-rates-tick-u-s-still-lags-developed-countries){target="_blank"}.]. Reports from this initiative have shown improvement to increase graduation rates, however dropout rates have not decreased by more than 1% since 1960.
+
+The data^[“Digest of Education Statistics, 2017.” *National Center for Education Statistics (NCES) Home Page, a Part of the U.S. Department of Education*, National Center for Education Statistics, [nces.ed.gov/programs/digest/d17/tables/dt17_219.70.asp](https://nces.ed.gov/programs/digest/d17/tables/dt17_219.70.asp){target="_blank"}.] we used was from the Current Population Survey (CPS)^[US Census Bureau. “Current Population Survey (CPS).” *Census Bureau QuickFacts*, United States Census Bureau, 5 Oct. 2018, [www.census.gov/programs-surveys/cps.html](https://www.census.gov/programs-surveys/cps.html){target="_blank"}.] run by the U.S. Census Bureau. From the interactive line graph^[“Line Plots.” *Modern Visualization for the Data Era - Plotly*, [plot.ly/r/line-charts/](https://plot.ly/r/line-charts/){target="_blank"}.] above, we see that high school dropout rates in the United States have a downward trend as year increases. All years after 1966 had a dropout rate below 17%.
+
+We set off to investigate dropout trends across the 50 states in the United States. Our goal was to analyze a midpoint mark, 2010, in a more in depth analysis. We were interested to see whether this trend was true across races and socioeconomic status, since the common narrative does not often highlight vulnerable and minority populations as their main focus.
+
+The United States has been lagging behind on graduation rates among the most developed countries^[Mason, Kyla Calvert. “High School Graduation Rates Rise but U.S. Still Lags Other Developed Countries.” *PBS*, Public Broadcasting Service, 12 Feb. 2015, [www.pbs.org/newshour/education/high-school-graduation-rates-tick-u-s-still-lags-developed-countries](https://www.pbs.org/newshour/education/high-school-graduation-rates-tick-u-s-still-lags-developed-countries){target="_blank"}.]. We wanted to take into consideration these rates among states, since some states in the United States are comparable in size and population to certain developed nations. Besides analyzing trends across states, we also wanted to consider two factors that researchers claim affect dropout rates the most: poverty and income level^[Lund, Christopher. "Why Are Students Dropping out of School? The Factors That Contribute to the United States High School Dropout Rate." 10 Dec. 2009, [cola.unh.edu/sites/cola.unh.edu/files/student-journals/ChristopherLund.pdf](https://cola.unh.edu/sites/cola.unh.edu/files/student-journals/ChristopherLund.pdf){target="_blank"}.]. We did so by considering the median household income and poverty level of each state. Click on our “More Info” tab to learn about our findings.
+
+
+# References and Citations

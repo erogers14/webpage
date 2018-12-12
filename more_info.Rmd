@@ -1,0 +1,475 @@
+---
+title: "Analysis of Dropout Rates (2009-2010)"
+author: "Emmely Rogers and Dana Vera"
+date: "Last updated on `r Sys.Date()`"
+output:
+  html_document:
+    code_folding: hide
+    highlight: tango
+    theme: cosmo
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    df_print: kable
+---
+
+<!--
+Comments in HTML are like this! 
+-->
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Set R Markdown chunk defaults:
+knitr::opts_chunk$set(
+  echo = FALSE, message = FALSE, warning = FALSE, 
+  fig.width = 16/2, fig.height = 9/2
+)
+```
+
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+
+# Load all necessary packages here
+library(tidyverse)
+library(readxl)
+library(tigris)
+library(leaflet)
+library(htmltools)
+library(htmlwidgets)
+library(scales)
+library(plotly)
+library(moderndive)
+library(leaflet.extras)
+library(captioner)
+
+```
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+
+# create a vector of all the states in the West region of the U.S.
+West = c("WA", "OR", "ID", "MT", "WY", "CO", 
+         "UT", "NV", "CA", "AK", "HI")
+
+# create a vector of all the states in the Southwest region of the U.S.
+Southwest = c("AZ", "NM", "TX", "OK")
+
+# create a vector of all the states in the Southeast region of the U.S.
+Southeast = c("AR", "LA", "MS", "AL", "GA", "FL", "SC", 
+              "TN", "NC", "KY", "VA", "WV", "DC", "DE", "MD")
+
+# create a vector of all the states in the Northeast region of the U.S.
+Northeast = c("NJ", "CT", "RI", "PA", "NY", "MA", "NH", "VT", "ME")
+
+# create a vector of all the states in the Midwest region of the U.S.
+Midwest = c("ND", "SD", "NE", "KS", "MO", "IA", "MN", 
+            "WI", "IL", "IN", "OH", "MI")
+
+# make a dataframe for our first dataset (poverty and household income)
+# filter for year 2010
+# select variables of importance
+poverty_income <- read_excel("state_series_1980-2014.xls") %>%
+  filter(year == 2010) %>%
+  select(fips, state_code, median_hhinc, percent_pov, total_pop)
+
+# make a dataframe for our second dataset (dropout rates)
+# select variables of importance
+# to get ready to join: rename a column
+# and rename other variables we are using
+dropout_rates <- read_excel("sdr091a.xls") %>%
+  select(FIPST, STATENAME, DRP912,
+         TOTDHI, TOTDBL, TOTDWH, TOTDAS, TOTDAM) %>%
+  rename(fips = FIPST, state_name = STATENAME, dropouts = DRP912,
+         total_hispanic = TOTDHI, total_black = TOTDBL, total_white = TOTDWH,
+         total_asian = TOTDAS, total_american = TOTDAM)
+
+
+# join by FIPS state numeric code
+# remove District of Columbia
+# add a new variable called "region" to the dataframe based on what region the state is in
+dropout_data <- inner_join(dropout_rates, poverty_income, by = "fips") %>%
+  filter(!(state_name == "District of Columbia")) %>%
+  mutate(region = case_when(state_code %in% West ~ "West",
+                            state_code %in% Southwest ~ "Southwest",
+                            state_code %in% Southeast ~ "Southeast", 
+                            state_code %in% Northeast ~ "Northeast",
+                            state_code %in% Midwest ~ "Midwest"))
+
+```
+
+# Introduction
+
+In order to do this comparison and analysis, we used the state dropout data^[“State Dropout and Completion Data.” *National Center for Education Statistics (NCES), a Part of the U.S. Department of Education*, National Center for Education Statistics, [nces.ed.gov/ccd/drpcompstatelvl.asp](https://nces.ed.gov/ccd/drpcompstatelvl.asp){target="_blank"}.] from the Common Core of Data (CCD)^[“Common Core of Data (CCD).” *National Center for Education Statistics (NCES) Home Page, a Part of the U.S. Department of Education*, National Center for Education Statistics, [nces.ed.gov/ccd/](https://nces.ed.gov/ccd/){target="_blank"}.] surveys that are submitted every year to the National Center for Education Statistics (NCES). Additionally, we used demographic and economic data^[“Arts & Sciences, Public Policy.” *William and Mary*, [www.wm.edu/as/publicpolicy/schroedercenter/for-faculty/Downloadable%20Health%20Datasets/State%20Level%20Downloadable%20Health%20Datasets/index.php](https://www.wm.edu/as/publicpolicy/schroedercenter/for-faculty/Downloadable%20Health%20Datasets/State%20Level%20Downloadable%20Health%20Datasets/index.php){target="_blank"}.]. This data came from the U.S. Bureau of Labor Statistics Local Area Statistics Project, U.S. Census Bureau Small Area Income and Poverty Estimates, and U.S. Census Bureau Population and Housing Estimates. We chose to focus on state, region, race, median household income, poverty level, and total resident population (all people who are usually residents of a specific state^[Daly, Michael. "Documentation: State Variable Longitudinal Dataset [1980 – 2014]." 12 Feb. 2016, [www.wm.edu/as/publicpolicy/schroedercenter/for-faculty/Downloadable%20Health%20Datasets/State%20Level% 20Downloadable%20Health%20Datasets/Documentation%20State%20Variable%20Longitudinal%20Data%201980-2014.pdf](https://www.wm.edu/as/publicpolicy/schroedercenter/for-faculty/Downloadable%20Health%20Datasets/State%20Level%20Downloadable%20Health%20Datasets/Documentation%20State%20Variable%20Longitudinal%20Data%201980-2014.pdf){target="_blank"}.]).
+
+Our barplot allows for analysis of dropouts by race, our interactive map provides a closer view on each state’s statistics, and our simple and multiple regression models give an insight on how poverty levels and income influence dropout rates. Check this footnote^[Interactive Stacked Barplot: To easily compare the heights of the different colors between the bars, you can hover your mouse over a color, and a popup label with more information will appear. To show/hide a race, click on it in the legend.<br><br>Interactive Choropleth Map: Clicking on a state will display some key statistics to consider when analyzing dropout rates like the state’s total population, poverty level, and median household income. We start our map centered on the U.S. at zoom level 4. The icon with four arrows brings you back to this setting.<br><br>Interactive Simple Linear Regression: Hovering your mouse over a point in a subplot will display more information about that observation. Hovering over a line will display what region the linear regression corresponds to.  To show/hide a region, click on it in the legend.<br><br>Interactive Multiple Regression Plot: Hovering your mouse over an observation will display more precise information about its poverty level, dropout rate, and median household income. You can also hover over the regression plane to see its x-value (poverty level), y-value (median household income), and z-value (dropout rate). Clicking and dragging moves the axes around for different perspectives.] to explore the interactive features for each figure. 
+
+
+# Interactive Stacked Barplot
+
+We created a stacked barplot^[“Bar Charts.” *Modern Visualization for the Data Era - Plotly*, [plot.ly/r/bar-charts/](https://plot.ly/r/bar-charts/){target="_blank"}.] and chose one common way to divide the United States into five regions^[National Geographic Society. “United States Regions.” *National Geographic Society*, 9 Nov. 2012, [www.nationalgeographic.org/maps/united-states-regions/](https://www.nationalgeographic.org/maps/united-states-regions/){target="_blank"}.]. 
+
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+
+# group by region
+# count: number of Hispanic drop outs, number of Black drop outs,
+# number of White drop outs, number of Asian/Hawaiian Native/Pacific Islander drop outs,
+# number of American Indian/Alaska Native drop outs, total population
+barplotData <- dropout_data %>%
+  group_by(region) %>% 
+  summarize(sum_hispanic = sum(total_hispanic), sum_black = sum(total_black), 
+            sum_white = sum(total_white), sum_asian = sum(total_asian), 
+            sum_american = sum(total_american), sum_pop = sum(total_pop))
+
+
+# make stacked barplot (a stack for each race)
+plot_ly(data = barplotData, x = ~region, y = ~sum_hispanic, 
+        type = 'bar', name = 'Hispanic',
+        text = paste("Total Region Population:", comma(barplotData$sum_pop)),
+        marker = list(color = 'rgb(0,0,128)')) %>%
+  add_trace(y = ~sum_black, name = 'Black',
+            marker = list(color = 'rgb(30,144,255)')) %>%
+  add_trace(y = ~sum_white, name = 'White',
+            marker = list(color = 'rgb(135,206,250)')) %>%
+  add_trace(y = ~sum_asian, name = 'Asian/Hawaiian Native/Pacific Islander',
+            marker = list(color = 'rgb(0,191,255)')) %>%
+  add_trace(y = ~sum_american, name = 'American Indian/Alaska Native',
+            marker = list(color = 'rgb(20, 106, 162)')) %>%
+  layout(title ="Total High School Dropouts by Race in the 2009-2010 School Year",
+         yaxis = list(title = 'Number of Dropouts', tickformat = ",d"), 
+         xaxis = list(title = 'U.S. Region', categoryorder = "array",
+                      categoryarray = c("West", "Southeast", "Midwest", 
+                                        "Southwest", "Northeast")),
+         barmode = 'stack',
+         legend = list(x = 100, y = 0.5),
+         annotations = list(yref = 'paper', xref = 'paper', y = 0.65, x = 1.13,
+                            text = "Race", showarrow = F)) %>%
+  config(displayModeBar = FALSE)
+
+
+```
+
+The descending order of the barplot^[mtoto. "Ordering in r plotly barchart." *Stack Overflow*, 20 Oct. 2016, [stackoverflow.com/questions/40149556/ordering-in-r-plotly-barchart/40149815](https://stackoverflow.com/questions/40149556/ordering-in-r-plotly-barchart/40149815){target="_blank"}.] allows us to easily see that the West has the largest number of dropouts and the Northeast has the fewest. This could be due to the fact that the West has a larger population than the Northeast. However, this reasoning doesn't explain why the West has more dropouts than the Southeast or Midwest since both of these regions have larger populations than the West.
+
+Among all races, Hispanics have the highest number of dropouts in the West and Southwest, while Whites have the highest number in the Southeast, Midwest, and Northeast; again, this could be because of the concentration of these races in specific regions. Overall, if we consider the total population of dropouts across states, we see that American Indians (12,004) and Asians (13,794) have the lowest number of dropout across races and regions, and that Whites (191,916) and Hispanics (149,990) have the highest. 
+
+
+# Interactive Choropleth Map
+
+Our map^[Tran, Andrew Ba. “Interactive Choropleth Maps.” *Interactive Choropleth Maps :: Journalism with R*, [learn.r-journalism.com/en/mapping/census_maps/census-maps/](https://learn.r-journalism.com/en/mapping/census_maps/census-maps/){target="_blank"}.] is colored by 2009-2010 dropout rates. 
+
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE, results = 'hide'}
+
+# load spatial data
+states <- states()
+
+# inner join spatial data and a dataframe
+states_merged <- geo_join(states, dropout_data, "STUSPS", "state_code", how = "inner")
+
+# make blue color palette based on the range of dropout rate numbers
+pal_dropouts <- colorNumeric("Blues", domain=states_merged$dropouts)
+
+# make popup labels
+popup_label <- paste0("<strong>", states_merged$NAME, 
+                      "</strong><br />Total Population: ", 
+                      comma(states_merged$total_pop),
+                      "<br />Dropout Rate: ", 
+                      paste(format(round(states_merged$dropouts, 2), nsmall = 2), "%", 
+                            sep = ""),
+                      "<br />Percent in Poverty: ", 
+                      paste(states_merged$percent_pov, "%", sep = ""),
+                      "<br />Median Household Income: ", 
+                      comma(states_merged$median_hhinc))
+
+```
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+
+# make interactive map
+# at start: center the map on the U.S.
+# add icon to reset map to zoom level 4, centered on U.S.
+leaflet(states) %>%
+  addProviderTiles("CartoDB.Positron") %>%
+  setView(-98.483330, 38.712046, zoom = 4) %>% 
+  addPolygons(data = states_merged, 
+              fillColor = ~pal_dropouts(states_merged$dropouts), 
+              fillOpacity = 0.7, 
+              weight = 0.2, 
+              smoothFactor = 0.2, 
+              highlight = highlightOptions(weight = 5, color = "#666",
+                                           fillOpacity = 0.7, bringToFront = TRUE),
+              popup = ~popup_label,
+              label = states_merged$NAME) %>%
+  addLegend(pal = pal_dropouts, 
+            values = states_merged$dropouts, 
+            position = "bottomright", 
+            title = "Dropout Rate",
+            labFormat = labelFormat(suffix = "%")) %>%
+  addResetMapButton()
+ 
+```
+
+In the map, Arizona has the highest dropout rate (7.8%) and New Hampshire has the lowest dropout rate (1.2%). Certain states have a higher or close dropout rate to the country’s average (7.43%) like Mississippi (7.40%) and Arizona (7.8%). These states also happen to be next to well performing states; Alabama (1.80%) is next to Mississippi, and Utah (2.60%) is right above Arizona. 
+
+This map shows us that states with dropout rates below 2% (New Hampshire, Indiana, Idaho, and Minnesota) have less than 6 million people. Whereas states with high dropout rates (Arizona, Mississippi, and New Mexico) do not necessarily have a big population, but have at least more than 17% of people living in poverty. 
+
+
+# Regression
+
+
+## Interactive Simple Linear Regression
+
+We created two simple linear regression models^[“Subplots.” *Modern Visualization for the Data Era - Plotly*, [plot.ly/r/subplots/](https://plot.ly/r/subplots/){target="_blank"}.] to see the individual relationships between each variable, income and poverty, and dropout rates across regions:
+
+ $$ \widehat{ Dropouts\ } = 4.564 -0.0000208 \cdot MedianIncome $$
+ $$ \widehat{ Dropouts\ } = 1.05214 +0.16852 \cdot PercentPoverty $$
+
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE, fig.width=9, fig.height=4.5}
+
+# set regression table caption prefix
+table_nums <- captioner::captioner(prefix = "Table")
+
+# make table 1 caption
+tab.1_cap <- table_nums(name = "tab_1", 
+                        caption = "Simple Linear Regression Table - Dropouts and Income")
+
+# make table 2 caption
+tab.2_cap <- table_nums(name = "tab_2", 
+                        caption = "Simple Linear Regression Table - Dropouts and Poverty")
+
+# make table 3 caption
+tab.3_cap <- table_nums(name = "tab_3", 
+                        caption = "Multiple Regression Table")
+
+# scatterplot of median income vs. total dropout rates
+# add hover text
+# set colors
+# add regression lines
+# format y-axis
+incomeplot <- ggplot(dropout_data, 
+                     aes(x = dropouts, y = median_hhinc, color = region)) +
+  geom_point(mapping = aes(text = paste("State: ", 
+                                        dropout_data$state_name, 
+                                        "<br />Region: ", dropout_data$region, 
+                                        "<br />Total Population: ", 
+                                        comma(dropout_data$total_pop), 
+                                        "<br />Dropout Rate: ", 
+                                        paste(format(round(dropouts, 2), nsmall = 2)), "%", 
+                                        "<br />Median Household Income: ", 
+                                        comma(dropout_data$median_hhinc), sep = ""))) +
+  scale_color_manual(values = c('#000080', '#1E90FF', '#87CEFA', '#00BFFF', '#146AA2')) +
+  labs(x = "Dropout Rate", y = "Median Household Income", 
+       color = "", size = "") +
+  geom_smooth(method = "lm", se = FALSE, size = 0.5,
+              mapping = aes(text = paste("Region:", dropout_data$region))) +
+  scale_y_continuous(label = comma) +
+  theme(text = element_text(size = 10))
+
+
+# scatterplot of poverty vs. total dropout rates
+# add hover text
+# set colors
+# add regression lines
+# format y-axis
+povertyplot <- ggplot(dropout_data, 
+                      aes(x = dropouts, y = percent_pov, color = region)) +
+  geom_point(mapping = aes(text = paste("State: ", 
+                                        dropout_data$state_name, 
+                                        "<br />Region: ", 
+                                        dropout_data$region, 
+                                        "<br />Total Population: ", 
+                                        comma(dropout_data$total_pop), 
+                                        "<br />Dropout Rate: ", 
+                                        paste(format(round(dropouts, 2), nsmall = 2)), "%", 
+                                        "<br />Percent in Poverty: ", 
+                                        paste(dropout_data$percent_pov, "%", sep = ""),
+                                        sep = ""))) +
+  scale_color_manual(values = c('#000080', '#1E90FF', '#87CEFA', '#00BFFF', '#146AA2')) +
+  labs(x = "Dropout Rate", y = "Percent of People Living in Poverty", 
+       color = "", size = "") +
+  geom_smooth(method = "lm", se = FALSE, size = 0.5, 
+              mapping = aes(text = paste("Region:", dropout_data$region))) +
+  theme(text = element_text(size = 10)) +
+  scale_y_continuous(labels = function(x) paste0(x, "%"))
+
+
+# turn ggplot into plotly plot
+povertyplot <- ggplotly(povertyplot, height = 500, tooltip = "text")
+
+# turn ggplot into plotly plot
+# format legend
+incomeplot <- ggplotly(incomeplot, height = 500, tooltip = "text") %>% 
+  layout(legend = list(orientation = "h", x = 0.1, y = -0.13))
+
+
+# combine the two simple regressions in one figure
+# add titles for each subplot
+# add legend title
+subplot(povertyplot, style(incomeplot, showlegend = FALSE), 
+        titleX = TRUE, titleY = TRUE, margin = 0.045) %>%
+  layout(annotations = list(
+    list(x = -0.001, y = 1.06,
+         text = "Relationship between Dropout Rates and Poverty Level", 
+         showarrow = F, xref = 'paper', yref = 'paper'),
+    list(x = 0.958, y = 1.06,
+         text = "Relationship between Dropout Rates and Income", 
+         showarrow = F, xref = 'paper', yref = 'paper'),
+    list(x = 0, y = -0.196, text = "U.S. Region", 
+         showarrow = F, xref = 'paper', yref = 'paper'))) %>%
+  config(displayModeBar = FALSE)
+
+
+```
+
+`r table_nums('tab_1')`
+```{r, tab_1, fig.cap = tab.1_cap, echo=TRUE, message=FALSE, warning=FALSE}
+# make linear regression model for the relationship between
+# median household income and dropout rates
+slrmodel_income <- lm(dropouts~median_hhinc, data = dropout_data)
+
+# output regression table with clearer column names
+get_regression_table(slrmodel_income, digits = 7) %>%
+  rename("lower confidence<br>interval" = lower_ci,
+         "upper confidence<br>interval" = upper_ci,
+         "standard<br>error" = std_error,
+         "p-value" = p_value)
+
+
+
+```
+
+`r table_nums('tab_2')`
+```{r, tab_2, fig.cap = tab.2_cap, echo=TRUE, message=FALSE, warning=FALSE}
+# make linear regression model for the relationship between
+# percent of people in poverty and dropout rates
+slrmodel_poverty <- lm(dropouts~percent_pov, data = dropout_data)
+
+# output regression table with clearer column names
+get_regression_table(slrmodel_poverty, digits = 7) %>%
+  rename("lower confidence<br>interval" = lower_ci,
+         "upper confidence<br>interval" = upper_ci,
+         "standard<br>error" = std_error,
+         "p-value" = p_value)
+
+
+
+```
+
+We see a very small negative association between income and dropout rates and a positive association between poverty and dropout rates. We see this trend across all regions except the West. Therefore, we would expect that on average as income increases per state, dropout rates decrease; and, as poverty level increases, dropout rates increase.
+
+These two graphs give us a better understanding of why we observed states with a high poverty level and relatively high dropout rates. We learned that the relationship between income and dropout rates isn’t as significant, and this possibly explains why we didn’t see a pattern in our map.
+
+
+ 
+
+## Interactive Multiple Regression Plot
+
+Since we wanted to see how good poverty level and income were at predicting dropout rates, we created a  multiple regression model and plot^[Kim, Albert. “Plotly R Code for Interactive 3D Scatterplot & Regression Plane of Seattle House Prices.” *Gist*, [gist.github.com/rudeboybert/9905f44013c18d6add279cf13ab8e398](https://gist.github.com/rudeboybert/9905f44013c18d6add279cf13ab8e398){target="_blank"}.]:
+
+$$ \widehat{ Dropouts\ } = -8.546 + 0.4274 \cdot PercentPoverty + 0.0001165 \cdot MedianIncome $$
+
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+set.seed(56)
+
+# Get coordinates of points for 3D scatterplot
+x_values <- dropout_data$percent_pov
+y_values <- dropout_data$median_hhinc
+z_values <- dropout_data$dropouts
+
+# Construct x and y grid elements
+x_grid <- seq(from = min(x_values), to = max(x_values))
+y_grid <- seq(from = min(y_values), to = max(y_values))
+
+
+# Construct z grid by computing
+# 1) fitted beta coefficients
+# 2) fitted values of outer product of x_grid and y_grid
+# 3) extracting z_grid (matrix needs to be of specific dimensions)
+beta_hat <- dropout_data %>%
+  lm(dropouts ~ percent_pov + median_hhinc, data = .) %>%
+  coef()
+
+fitted_values <- crossing(y_grid, x_grid) %>%
+  mutate(z_grid = beta_hat[1] + beta_hat[2]*x_grid + beta_hat[3]*y_grid)
+
+z_grid <- fitted_values %>%
+  pull(z_grid) %>%
+  matrix(nrow = length(x_grid)) %>%
+  t()
+
+
+# plot using plotly
+# add 3D scatterplot
+# add regression plane
+# add title, format legend, add axis labels
+plot_ly(data = dropout_data, height = 500) %>%
+  add_markers(x = x_values, y = y_values, z = z_values, color = ~region,
+              colors = c('#000080', '#1E90FF', '#87CEFA', '#00BFFF', '#146AA2'),
+              marker = list(size = 5),
+              hoverinfo = 'text',
+              text = ~paste('Percent in Poverty:', 
+                            paste(percent_pov, "%", sep = ""), 
+                            '<br>Dropout Rate:', 
+                            paste(format(round(dropouts, 2), nsmall = 2), "%", sep = ""), 
+                            '<br>Median Household Income:',
+                            comma(median_hhinc))) %>%
+  add_surface(x = x_grid, y = y_grid, z = z_grid,
+              colorscale = list(c(0,1), c("rgb(198, 201, 206)", "rgb(104, 106, 109)")),
+              color = ~z_values, colorbar = list(title = 'Dropout Rate'),
+              hoverinfo = 'x+y+z') %>%
+  layout(margin = list(l = 0.02, r = 0.02, b = 0, t = 120), title = "3D Scatterplot and Regression Plane of <br>
+         Dropout Rates, Poverty Level, and Median Household Income",
+         legend = list(x = 1.01, y = 0.4),
+         annotations = list(x = 1.148, y = 0.41, text = "U.S. Region", 
+                            showarrow = F, xref = 'paper', yref = 'paper'),
+         scene = list(
+           zaxis = list(title = "Dropouts", ticksuffix = "%"),
+           yaxis = list(title = "Income"),
+           xaxis = list(title = "Poverty", ticksuffix = "%"))) %>%
+  config(displayModeBar = FALSE)
+
+
+```
+
+
+`r table_nums('tab_3')`
+```{r, echo=TRUE, message=FALSE, warning=FALSE, tab_3, fig.cap = tab.3_cap}
+# make multiple regression model
+multipleregressionmodel <- lm(dropouts~percent_pov + median_hhinc, data = dropout_data)
+
+# output regression table with clearer column names
+get_regression_table(multipleregressionmodel, digits = 7) %>%
+  rename("lower confidence<br>interval" = lower_ci,
+         "upper confidence<br>interval" = upper_ci,
+         "standard<br>error" = std_error,
+         "p-value" = p_value)
+
+```
+
+
+In this model, the poverty level has a positive and significant association with dropout rates (confidence interval doesn’t include zero), whereas the association between income and dropout rates is almost nonexistent and barely significant (coefficient is zero, and confidence interval doesn’t include zero).
+
+# Conclusion
+
+Through this analysis we were able to analyze dropout rates more thoroughly. We learned that dropout rates have decreased in the past decades, but not enough to compete with other developed countries. Additionally, we learned that Hispanics and Whites make most of the high school dropout population across all races, not Blacks, as how it is often believed. We also learned that there is a lot of variability across states in dropout rates; some states have very low dropout rates while others have very high ones. Lastly, we were able to explore and understand how income and poverty were associated with dropout rates by running simple and multiple regression models. Further analysis could be done to understand how other variables like total school population and average attendance in high school affect dropout rates.
+
+
+# References and Citations
+
+* Willems, Karlijn. “R Tutorial on Reading and Importing Excel Files into R.” *DataCamp Community*, 2 Apr. 2015, [www.datacamp.com/community/tutorials/r-tutorial-read-excel-into-r#xlsx](https://www.datacamp.com/community/tutorials/r-tutorial-read-excel-into-r#xlsx){target="_blank"}.
+* “Legends.” *Modern Visualization for the Data Era - Plotly*, [plot.ly/r/legend/](https://plot.ly/r/legend/){target="_blank"}.
+* “3D Scatter Plots.” *Modern Visualization for the Data Era - Plotly*, [plot.ly/r/3d-scatter-plots/](https://plot.ly/r/3d-scatter-plots/){target="_blank"}.
+* eipi10. "Formatting ggplot2 axis labels with commas (and K? MM?) if I already have a y-scale." *Stack Overflow*, 8 June 2016, [stackoverflow.com/questions/37713351/formatting-ggplot2-axis-labels-with-commas-and-k-mm-if-i-already-have-a-y-sc](https://stackoverflow.com/questions/37713351/formatting-ggplot2-axis-labels-with-commas-and-k-mm-if-i-already-have-a-y-sc){target="_blank"}.
+* Deena. "How to change y axis range to percent (%) from number in barplot with R." *Stack Overflow*, 13 Aug. 2017, [stackoverflow.com/questions/27433798/how-to-change-y-axis-range-to-percent-from-number-in-barplot-with-r](https://stackoverflow.com/questions/27433798/how-to-change-y-axis-range-to-percent-from-number-in-barplot-with-r){target="_blank"}.
+* Anglim, Jeromy. "Formatting Decimal places in R." *Stack Overflow*, 27 Aug. 2012, [stackoverflow.com/questions/3443687/formatting-decimal-places-in-r](https://stackoverflow.com/questions/3443687/formatting-decimal-places-in-r){target="_blank"}.
+* Karambelkar, Bhaskar. “Leaflet.extras.” *Function | R Documentation*, [www.rdocumentation.org/packages/leaflet.extras/versions/1.0.0/topics/addResetMapButton](https://www.rdocumentation.org/packages/leaflet.extras/versions/1.0.0/topics/addResetMapButton){target="_blank"}.
+* csgillespie. “increasing the line thickness of geom_smooth.” *Stack Overflow*, 5 Oct. 2012, [stackoverflow.com/questions/12746667/increasing-the-line-thickness-of-geom-smooth](https://stackoverflow.com/questions/12746667/increasing-the-line-thickness-of-geom-smooth){target="_blank"}.
+* Sievert, Carson. "subplot: View multiple plots in a single view." *R Package Documentation*, 21 July 2018, [rdrr.io/cran/plotly/man/subplot.html](https://rdrr.io/cran/plotly/man/subplot.html){target="_blank"}.
+* d-roy. "How to give subtitles for subplot in plot_ly using R." *Stack Overflow*, 18 May 2016, [stackoverflow.com/questions/37285729/how-to-give-subtitles-for-subplot-in-plot-ly-using-r](https://stackoverflow.com/questions/37285729/how-to-give-subtitles-for-subplot-in-plot-ly-using-r){target="_blank"}.
+* “Setting Graph Size.” *Modern Visualization for the Data Era - Plotly*, [plot.ly/r/setting-graph-size/](https://plot.ly/r/setting-graph-size/){target="_blank"}.
+* Vik, Jon Olav. "Formatting mouse over labels in plotly when using ggplotly." *Stack Overflow*, 23 Apr. 2017, [stackoverflow.com/questions/34605919/formatting-mouse-over-labels-in-plotly-when-using-ggplotly](https://stackoverflow.com/questions/34605919/formatting-mouse-over-labels-in-plotly-when-using-ggplotly){target="_blank"}.
+* “Colorscales.” *Modern Visualization for the Data Era - Plotly*, [plot.ly/r/colorscales/](https://plot.ly/r/colorscales/){target="_blank"}.
+* sebastien1785. “Plotly - Different Color Scales for Multiple Surfaces.” *Plotly Forum*, 11 Oct. 2017, [community.plot.ly/t/plotly-different-color-scales-for-multiple-surfaces/6153/4](https://community.plot.ly/t/plotly-different-color-scales-for-multiple-surfaces/6153/4){target="_blank"}.
+* Masoud. "Plotly in R: format axis - tick labels to percentage." *Stack Overflow*, 19 June 2017, [stackoverflow.com/questions/44638590/plotly-in-r-format-axis-tick-labels-to-percentage/45407104](https://stackoverflow.com/questions/44638590/plotly-in-r-format-axis-tick-labels-to-percentage/45407104){target="_blank"}.
+* Köhler, Norbert. “R Markdown: How to Number and Reference Tables.” *DataScience+*, 22 Sept. 2016, [datascienceplus.com/r-markdown-how-to-number-and-reference-tables/](https://datascienceplus.com/r-markdown-how-to-number-and-reference-tables/){target="_blank"} .
